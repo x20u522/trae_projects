@@ -17,6 +17,73 @@
         <el-alert :title="error" type="error" show-icon />
       </div>
 
+      <!-- 文档元数据 -->
+      <div v-if="metadata" class="metadata-section">
+        <h3 class="section-title">文档元数据</h3>
+        <el-row :gutter="20">
+          <el-col :span="6">
+            <el-card body-style="{ padding: '12px' }">
+              <div class="meta-item">
+                <span class="meta-label">文档类型</span>
+                <span class="meta-value">{{ metadata.type || '-' }}</span>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card body-style="{ padding: '12px' }">
+              <div class="meta-item">
+                <span class="meta-label">段落数</span>
+                <span class="meta-value">{{ metadata.paragraph_count || '-' }}</span>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card body-style="{ padding: '12px' }">
+              <div class="meta-item">
+                <span class="meta-label">表格数</span>
+                <span class="meta-value">{{ metadata.table_count || '-' }}</span>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card body-style="{ padding: '12px' }">
+              <div class="meta-item">
+                <span class="meta-label">图片数</span>
+                <span class="meta-value">{{ metadata.image_count || '-' }}</span>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+      </div>
+
+      <!-- 表格信息 -->
+      <div v-if="tables.length > 0" class="tables-section">
+        <h3 class="section-title">识别到的表格</h3>
+        <el-table :data="tables" border style="width: 100%">
+          <el-table-column prop="index" label="序号" width="80" />
+          <el-table-column prop="summary" label="表格摘要" />
+          <el-table-column prop="row_count" label="行数" width="80" />
+          <el-table-column prop="col_count" label="列数" width="80" />
+          <el-table-column label="表头" width="300">
+            <template #default="scope">
+              <span v-if="scope.row.headers?.length">{{ scope.row.headers.join(', ') }}</span>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
+      <!-- 图片信息 -->
+      <div v-if="images.length > 0" class="images-section">
+        <h3 class="section-title">识别到的图片</h3>
+        <el-table :data="images" border style="width: 100%">
+          <el-table-column prop="index" label="序号" width="80" />
+          <el-table-column prop="description" label="图片描述" />
+          <el-table-column prop="type" label="类型" width="120" />
+          <el-table-column prop="page" label="所在页码" width="120" />
+        </el-table>
+      </div>
+
       <div v-if="chunks.length > 0" class="chunks-section">
         <h3 class="section-title">文档拆分结果</h3>
         <el-collapse v-model="activeChunks">
@@ -66,6 +133,9 @@ const generating = ref(false)
 const error = ref('')
 const chunks = ref([])
 const fullContent = ref('')
+const tables = ref([])
+const images = ref([])
+const metadata = ref({})
 const activeChunks = ref([0])
 
 onMounted(() => {
@@ -86,9 +156,14 @@ const parseDocument = async () => {
     if (response.data.success) {
       chunks.value = response.data.chunks || []
       fullContent.value = response.data.content || ''
+      tables.value = response.data.tables || []
+      images.value = response.data.images || []
+      metadata.value = response.data.metadata || {}
 
       localStorage.setItem('currentChunks', JSON.stringify(chunks.value))
       localStorage.setItem('currentContent', fullContent.value)
+      localStorage.setItem('currentTables', JSON.stringify(tables.value))
+      localStorage.setItem('currentImages', JSON.stringify(images.value))
 
       ElMessage.success('文档解析成功')
     } else {
@@ -114,6 +189,8 @@ const generateTestPoints = async () => {
   try {
     const response = await axios.post('/api/generate-test-points', {
       chunks: chunks.value,
+      tables: tables.value,
+      images: images.value,
       model: 'gpt-3.5-turbo'
     })
 
@@ -171,6 +248,32 @@ const getChunkType = (type) => {
   margin: 20px 0 12px;
   padding-bottom: 8px;
   border-bottom: 1px solid #ebeef5;
+}
+
+.metadata-section {
+  margin-bottom: 20px;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.meta-label {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 4px;
+}
+
+.meta-value {
+  font-size: 16px;
+  font-weight: bold;
+  color: #303133;
+}
+
+.tables-section,
+.images-section {
+  margin-bottom: 20px;
 }
 
 .chunks-section {

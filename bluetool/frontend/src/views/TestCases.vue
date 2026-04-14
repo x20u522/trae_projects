@@ -17,6 +17,9 @@
             <el-button @click="exportCases('markdown')">
               <el-icon><DocumentCopy /></el-icon> 导出 Markdown
             </el-button>
+            <el-button type="success" @click="exportCases('excel')">
+              <el-icon><Table /></el-icon> 导出 Excel
+            </el-button>
             <el-button type="primary" @click="copyAllCases">
               <el-icon><CopyDocument /></el-icon> 复制全部
             </el-button>
@@ -49,10 +52,23 @@
                 <el-tag size="small" type="info" style="margin-left: 8px;">
                   {{ testCase.module }}
                 </el-tag>
+                <el-tag size="small" type="success" style="margin-left: 8px;">
+                  {{ testCase.scene || '正向' }}
+                </el-tag>
               </div>
             </template>
 
             <div class="case-detail">
+              <div class="detail-section">
+                <h4>基本信息</h4>
+                <el-descriptions :column="2" size="small">
+                  <el-descriptions-item label="所属模块">{{ testCase.module }}</el-descriptions-item>
+                  <el-descriptions-item label="涉及端侧">{{ testCase.involve_side || 'Web端' }}</el-descriptions-item>
+                  <el-descriptions-item label="场景">{{ testCase.scene || '正向' }}</el-descriptions-item>
+                  <el-descriptions-item label="优先级">{{ testCase.priority }}</el-descriptions-item>
+                </el-descriptions>
+              </div>
+
               <div class="detail-section">
                 <h4>前置条件</h4>
                 <ol>
@@ -196,9 +212,16 @@ const exportCases = async (format) => {
     })
 
     if (response.data.success) {
-      exportContent.value = response.data.data
-      exportFormat.value = format
-      exportDialogVisible.value = true
+      if (format === 'excel') {
+        // Excel 导出直接下载
+        const filename = response.data.data
+        window.location.href = `/api/download-excel/${filename}`
+        ElMessage.success('Excel文件导出成功')
+      } else {
+        exportContent.value = response.data.data
+        exportFormat.value = format
+        exportDialogVisible.value = true
+      }
     } else {
       ElMessage.error(response.data.error || '导出失败')
     }
