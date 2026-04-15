@@ -5,6 +5,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import json
 import uuid
+import re
 
 app = Flask(__name__)
 CORS(app)
@@ -296,20 +297,15 @@ def is_module_title(line):
     """判断是否为模块标题（支持数字编号格式如 1.、1.1、2. 等）"""
     if not line:
         return False
-    
-    # 检查是否以数字开头且包含小数点
-    if line[0].isdigit():
-        parts = line.split('.', 1)
-        if len(parts) > 1 and parts[0].isdigit():
-            # 检查小数点后面是否有内容
-            after_dot = parts[1].strip()
-            if after_dot and len(after_dot) > 0:
-                return True
-    
+
+    # 数字编号标题：1. 标题 / 1.1 标题 / 1.1.1 标题
+    if re.match(r'^\d+(?:\.\d+)*[\.、]\s*\S+', line):
+        return True
+
     # 检查 markdown 标题格式
     if line.startswith('#'):
         return True
-    
+
     return False
 
 @app.route('/api/generate-test-points', methods=['POST'])
@@ -362,19 +358,18 @@ def generate_test_points():
 
         for idx, chunk in enumerate(chunks):
             response = chain.invoke({"content": chunk['content'][:2000]})
+            response_text = normalize_llm_response(response)
 
             try:
-                points = json.loads(response)
+                points = parse_llm_points(response_text)
                 if isinstance(points, list):
                     for point in points:
-                        point['chunk_id'] = idx
-                        point['test_point_id'] = f"TP-{len(all_test_points) + 1:03d}"
+                        normalize_test_point(point, idx, len(all_test_points) + 1)
                     all_test_points.extend(points)
             except json.JSONDecodeError:
-                points = parse_text_test_points(response)
+                points = parse_text_test_points(response_text)
                 for point in points:
-                    point['chunk_id'] = idx
-                    point['test_point_id'] = f"TP-{len(all_test_points) + 1:03d}"
+                    normalize_test_point(point, idx, len(all_test_points) + 1)
                 all_test_points.extend(points)
 
         return jsonify({
@@ -398,7 +393,7 @@ def parse_text_test_points(text):
         if not line or line.startswith('#') or line.startswith('```'):
             continue
 
-        if line[0].isdigit() or line.startswith('-') or line.startswith('*'):
+        if line and (line[0].isdigit() or line.startswith('-') or line.startswith('*')):
             if current_point:
                 points.append(current_point)
 
@@ -414,6 +409,46 @@ def parse_text_test_points(text):
         points.append(current_point)
 
     return points
+
+def normalize_llm_response(response):
+    """兼容 LangChain 不同返回结构，统一提取字符串内容"""
+    if isinstance(response, str):
+        return response
+    if isinstance(response, dict):
+        for key in ('text', 'output_text', 'content'):
+            value = response.get(key)
+            if isinstance(value, str):
+                return value
+        return json.dumps(response, ensure_ascii=False)
+    return str(response)
+
+def parse_llm_points(response_text):
+    """解析大模型返回的测试点 JSON（兼容 Markdown 代码块）"""
+    if not response_text:
+        return []
+
+    cleaned = response_text.strip()
+    if cleaned.startswith('```'):
+        cleaned = cleaned.strip('`')
+        if cleaned.lower().startswith('json'):
+            cleaned = cleaned[4:]
+        cleaned = cleaned.strip()
+
+    parsed = json.loads(cleaned)
+    if isinstance(parsed, dict):
+        if isinstance(parsed.get('test_points'), list):
+            return parsed['test_points']
+        return [parsed]
+    return parsed
+
+def normalize_test_point(point, chunk_id, index):
+    """补齐测试点必填字段，避免模型漏字段导致前端异常"""
+    point['chunk_id'] = chunk_id
+    point['test_point_id'] = f"TP-{index:03d}"
+    point.setdefault('category', '功能点')
+    point.setdefault('description', '待补充测试点描述')
+    point.setdefault('priority', '中')
+    point.setdefault('test_type', '功能测试')
 
 def generate_demo_test_points():
     return [
